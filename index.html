@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f7f5fc">
+  <title>Penny — мои финансы</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="loading" class="loading-screen"><div class="splash-content"><span class="brand-mark" aria-label="Penny"><span>p</span><i></i></span><strong>penny<span>.</span></strong><p>Добро пожаловать в своё пространство ясности</p><div class="splash-progress"><i></i></div></div></div>
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <a class="brand" href="#"><span class="brand-mark" aria-label="Penny"><span>p</span><i></i></span><span>penny<span class="brand-dot">.</span></span></a>
+      <div class="side-label">МЕНЮ</div>
+      <button class="nav-item active" data-view="overview"><span>⌂</span> Обзор</button>
+      <button class="nav-item" data-view="transactions"><span>↕</span> Операции</button>
+      <button class="nav-item" data-view="analytics"><span>▥</span> Аналитика</button>
+      <div class="sidebar-bottom">
+        <div class="privacy-note"><span>✦</span><div><b>Твои финансы — личные</b><small>Данные доступны только твоему аккаунту.</small></div></div>
+        <div class="user-mini"><img id="user-avatar" alt="" src=""><div class="user-meta"><b id="user-name">Аккаунт</b><small id="user-email"></small></div><button id="logout" class="icon-button" title="Выйти">↗</button></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="eyebrow" id="today-label">ТВОИ ФИНАНСЫ</div><h1 id="page-title">Обзор</h1></div>
+        <div class="top-actions"><button id="theme-toggle" class="button button-quiet theme-toggle" type="button" aria-label="Переключить тему" title="Переключить тему"><span class="theme-icon">☾</span><span class="theme-label">Тёмная тема</span></button><button id="export-csv" class="button button-quiet">↓ <span>Экспорт</span></button><button class="button button-primary" id="add-top">＋ Добавить операцию</button></div>
+      </header>
+
+      <section id="view-overview" class="view">
+        <div class="welcome-row"><div><h2>Привет! 👋🏻</h2><p>Посмотрим, как обстоят дела с деньгами.</p></div><div class="period-control"><button class="period-btn active" data-period="month">Месяц</button><button class="period-btn" data-period="quarter">Квартал</button><button class="period-btn" data-period="year">Год</button></div></div>
+        <div class="summary-grid">
+          <article class="summary-card balance-card"><div class="card-top"><span>Текущий баланс</span><span class="soft-icon">◈</span></div><div class="big-number" id="balance-value">0 ₽</div><div class="card-foot"><span class="status-pill">● На основе операций</span><span class="muted" id="balance-caption">За всё время</span></div></article>
+          <article class="summary-card"><div class="card-top"><span>Доходы</span><span class="round-icon income-icon">↗</span></div><div class="metric-number income-text" id="income-value">0 ₽</div><div class="card-foot"><span class="muted" id="income-caption">За месяц</span><span class="tiny-trend">Поступления</span></div></article>
+          <article class="summary-card"><div class="card-top"><span>Расходы</span><span class="round-icon expense-icon">↘</span></div><div class="metric-number expense-text" id="expense-value">0 ₽</div><div class="card-foot"><span class="muted" id="expense-caption">За месяц</span><span class="tiny-trend">Покупки и платежи</span></div></article>
+          <article class="summary-card"><div class="card-top"><span>Разница</span><span class="round-icon net-icon">≈</span></div><div class="metric-number" id="net-value">0 ₽</div><div class="card-foot"><span class="muted">Доходы минус расходы</span><span class="tiny-trend" id="net-caption">—</span></div></article>
+        </div>
+        <div class="content-grid">
+          <article class="panel chart-panel"><div class="panel-heading"><div><h3>Движение денег</h3><p>Доходы и расходы за выбранный период</p></div><span class="legend"><i class="legend-income"></i> Доходы <i class="legend-expense"></i> Расходы</span></div><div id="flow-chart" class="chart-area"><div class="empty-state">Добавь операции, чтобы увидеть график.</div></div></article>
+          <article class="panel"><div class="panel-heading"><div><h3>Расходы по категориям</h3><p>Куда уходят деньги</p></div></div><div id="category-chart" class="category-chart"><div class="empty-state">Пока нет расходов.</div></div></article>
+        </div>
+        <article class="panel recent-panel"><div class="panel-heading"><div><h3>Последние операции</h3><p>Самые свежие записи</p></div><button class="text-button" data-go="transactions">Все операции →</button></div><div id="recent-list" class="transaction-list"><div class="empty-state">Пока нет операций. Добавь первую!</div></div></article>
+      </section>
+
+      <section id="view-transactions" class="view hidden">
+        <div class="section-intro"><div><h2>Все операции</h2><p>Каждая покупка, поступление и перевод — в одном месте.</p></div><button class="button button-primary" id="add-transactions">＋ Новая операция</button></div>
+        <div class="filter-row"><input id="search-input" class="field search-field" placeholder="⌕  Поиск по названию…"><select id="type-filter" class="field"><option value="all">Все типы</option><option value="expense">Расходы</option><option value="income">Доходы</option><option value="transfer">Переводы</option></select><select id="category-filter" class="field"><option value="all">Все категории</option></select></div>
+        <div id="all-list" class="panel transaction-list full-list"><div class="empty-state">Здесь появятся твои операции.</div></div>
+      </section>
+
+      <section id="view-analytics" class="view hidden">
+        <div class="section-intro"><div><h2>Аналитика</h2><p>Финансовая картина без сложных таблиц.</p></div><select id="analytics-period" class="field"><option value="month">Этот месяц</option><option value="quarter">Этот квартал</option><option value="year">Этот год</option><option value="all">За всё время</option></select></div>
+        <div class="summary-grid analytics-summary"><article class="summary-card"><span class="muted">Получено</span><div class="metric-number income-text" id="a-income">0 ₽</div></article><article class="summary-card"><span class="muted">Потрачено</span><div class="metric-number expense-text" id="a-expense">0 ₽</div></article><article class="summary-card"><span class="muted">Осталось от доходов</span><div class="metric-number" id="a-net">0 ₽</div></article></div>
+        <div class="content-grid"><article class="panel"><div class="panel-heading"><div><h3>Категории расходов</h3><p>Сумма и доля каждой категории</p></div></div><div id="analytics-categories" class="category-chart"></div></article><article class="panel"><div class="panel-heading"><div><h3>Источники дохода</h3><p>Откуда приходят деньги</p></div></div><div id="analytics-income" class="category-chart"></div></article></div>
+        <section class="danger-zone" aria-labelledby="reset-stats-title"><div><h3 id="reset-stats-title">Очистка статистики</h3><p>Удалить все операции и обнулить финансовые показатели. Это действие нельзя отменить.</p></div><button type="button" id="reset-stats" class="button button-danger">Сбросить всю статистику</button></section>
+      </section>
+      <footer class="footer-note">Penny · Личный финансовый дневник <span>Сделано для ясности, а не для чувства вины ♡</span></footer>
+    </main>
+  </div>
+
+  <div id="transaction-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-backdrop" data-close="modal"></div><div class="modal-card">
+      <div class="modal-heading"><div><div class="eyebrow">НОВАЯ ЗАПИСЬ</div><h2 id="modal-title">Добавить операцию</h2></div><button class="icon-button close-modal" data-close="modal">×</button></div>
+      <form id="transaction-form">
+        <div class="type-switch"><button type="button" class="type-option active" data-type="expense">Расход</button><button type="button" class="type-option" data-type="income">Доход</button><button type="button" class="type-option" data-type="transfer">Перевод</button></div>
+        <label class="form-label">Сумма</label><div class="amount-wrap"><input id="amount" class="amount-input" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="0" required><span>₽</span></div>
+        <label class="form-label" for="description">Название операции</label><input id="description" class="field field-wide" maxlength="80" placeholder="Например, продукты в магазине" required>
+        <div class="suggestion" id="category-hint">Категория определится автоматически по названию. Её можно изменить.</div>
+        <label class="form-label" for="category">Категория</label><select id="category" class="field field-wide"></select>
+        <div class="form-two"><div><label class="form-label" for="date">Дата</label><input id="date" class="field field-wide" type="date" required></div><div><label class="form-label" for="account">Счёт</label><select id="account" class="field field-wide"><option>Основной</option><option>Наличные</option><option>Накопления</option></select></div></div>
+        <label class="form-label" for="note">Заметка <span class="optional">необязательно</span></label><input id="note" class="field field-wide" maxlength="180" placeholder="Можно оставить пустым">
+        <div class="modal-actions"><button type="button" class="button button-quiet" data-close="modal">Отмена</button><button type="submit" class="button button-primary" id="save-transaction">Сохранить операцию</button></div>
+      </form>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="theme.js"></script><script type="module" src="app.js"></script>
+</body>
+</html>
