@@ -1,0 +1,103 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
+const $ = s => document.querySelector(s);
+const money = n => new Intl.NumberFormat("ru-RU",{maximumFractionDigits:2}).format(n||0)+" ₽";
+const dateFmt = s => new Date(s+"T12:00:00").toLocaleDateString("ru-RU",{day:"numeric",month:"short"});
+const today = () => new Date().toISOString().slice(0,10);
+const colors = ["#9b83df","#e8a6c3","#7fc6a5","#efc77f","#91b8dc","#b49abf","#d28e8e","#9db5a4"];
+const categories = {
+ expense:["Продукты","Кафе и доставка","Транспорт","Жильё и коммунальные","Здоровье","Красота и уход","Одежда и покупки","Подписки","Развлечения","Питомцы","Образование","Подарки","Другое"],
+ income:["Зарплата","Подработка","Подарок","Возврат средств","Продажа","Инвестиции","Другое"],
+ transfer:["Между своими счетами","Перевод человеку","Другое"]
+};
+const icons = {"Продукты":"🥑","Кафе и доставка":"☕","Транспорт":"🚇","Жильё и коммунальные":"🏠","Здоровье":"♡","Красота и уход":"✿","Одежда и покупки":"♧","Подписки":"▣","Развлечения":"♫","Питомцы":"🐾","Образование":"✎","Подарки":"🎁","Зарплата":"↗","Подработка":"✧","Подарок":"🎀","Возврат средств":"↩","Продажа":"◇","Инвестиции":"▤","Между своими счетами":"⇄","Перевод человеку":"↗","Другое":"◦"};
+const keywords = [
+ [["продукт","магазин","пятер","магнит","перекрест","вкусвилл","ашан","еда"],"Продукты"],
+ [["кафе","кофе","ресторан","достав","вкусно","пицц","суши","бургер"],"Кафе и доставка"],
+ [["такси","метро","автобус","транспорт","бензин","билет"],"Транспорт"],
+ [["аренд","квартир","коммунал","жкх","интернет","телефон","связь"],"Жильё и коммунальные"],
+ [["аптек","врач","анализ","стомат","лекар","медицин"],"Здоровье"],
+ [["космет","макияж","парикмах","маникюр","уход","лазер","эпиляц"],"Красота и уход"],
+ [["одежд","обув","озон","wildberries","вб","покупк","маркетплейс"],"Одежда и покупки"],
+ [["подпис","spotify","яндекс плюс","ivi","кинопоиск","netflix"],"Подписки"],
+ [["кино","игр","концерт","развлеч","музык"],"Развлечения"],
+ [["хомяк","кролик","корм","ветеринар","питом"],"Питомцы"],
+ [["курс","обуч","учеб","книг","школ"],"Образование"],
+ [["подар"],"Подарки"]
+];
+function guessCategory(text,type){const s=text.toLowerCase();for(const [words,cat] of keywords){if(words.some(w=>s.includes(w)) && categories[type]?.includes(cat))return cat;}return categories[type]?.at(-1)||"Другое";}
+let currentUser=null, transactions=[], selectedType="expense", selectedPeriod="month", editingId=null, toastTimer;
+function toast(message){const el=$("#toast");el.textContent=message;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2600);}
+function esc(s=""){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function userCol(){return collection(db,"users",currentUser.uid,"transactions");}
+async function loadTransactions(){const q=query(userCol(),orderBy("date","desc"));const snap=await getDocs(q);transactions=snap.docs.map(d=>({id:d.id,...d.data()}));renderAll();}
+function rangeFor(period){const now=new Date(), y=now.getFullYear(),m=now.getMonth();let start;if(period==="month")start=new Date(y,m,1);else if(period==="quarter")start=new Date(y,Math.floor(m/3)*3,1);else start=new Date(y,0,1);return {start:start.toISOString().slice(0,10),end:today()};}
+function filtered(period){if(period==="all")return transactions;const r=rangeFor(period);return transactions.filter(t=>t.date>=r.start&&t.date<=r.end);}
+function sums(items){return {income:items.filter(t=>t.type==="income").reduce((a,t)=>a+Number(t.amount),0),expense:items.filter(t=>t.type==="expense").reduce((a,t)=>a+Number(t.amount),0)};}
+function balance(){return transactions.reduce((a,t)=>a+(t.type==="income"?Number(t.amount):t.type==="expense"?-Number(t.amount):0),0);}
+function setView(name){document.querySelectorAll(".view").forEach(v=>v.classList.add("hidden"));$("#view-"+name).classList.remove("hidden");document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===name));$("#page-title").textContent=({overview:"Обзор",transactions:"Операции",analytics:"Аналитика"})[name];if(name==="analytics")renderAnalytics();if(name==="transactions")renderTransactions();}
+function renderAll(){renderOverview();renderTransactions();renderAnalytics();populateCategoryFilter();}
+function renderOverview(){const items=filtered(selectedPeriod),s=sums(items),net=s.income-s.expense;$("#balance-value").textContent=money(balance());$("#income-value").textContent=money(s.income);$("#expense-value").textContent=money(s.expense);$("#net-value").textContent=money(net);$("#net-caption").textContent=net>=0?"Положительный результат":"Расходы выше доходов";const p=selectedPeriod==="month"?"месяц":selectedPeriod==="quarter"?"квартал":"год";$("#income-caption").textContent=$("#expense-caption").textContent="За "+p;$("#balance-caption").textContent="За всё время";renderFlow(items);renderCategoryBars($("#category-chart"),items.filter(t=>t.type==="expense"));renderRecent();}
+function renderFlow(items){const el=$("#flow-chart");if(!items.length){el.innerHTML='<div class="empty-state">Добавь операции, чтобы увидеть график.</div>';return;}let labels=[],inc=[],exp=[];if(selectedPeriod==="month"){const n=new Date().getDate();for(let d=1;d<=n;d++){labels.push(String(d));inc.push(0);exp.push(0);}items.forEach(t=>{const d=Number(t.date.slice(8,10))-1;if(d>=0&&d<inc.length){if(t.type==="income")inc[d]+=Number(t.amount);if(t.type==="expense")exp[d]+=Number(t.amount);}});const step=Math.max(1,Math.ceil(labels.length/6));labels=labels.filter((_,i)=>i%step===0);inc=inc.filter((_,i)=>i%step===0);exp=exp.filter((_,i)=>i%step===0);}else{const count=selectedPeriod==="quarter"?3:12;const now=new Date();for(let i=count-1;i>=0;i--){let d=new Date(now.getFullYear(),now.getMonth()-i,1);labels.push(d.toLocaleDateString("ru-RU",{month:"short"}));let a=items.filter(t=>{const x=new Date(t.date+"T12:00:00");return x.getFullYear()===d.getFullYear()&&x.getMonth()===d.getMonth()});inc.push(a.filter(t=>t.type==="income").reduce((v,t)=>v+Number(t.amount),0));exp.push(a.filter(t=>t.type==="expense").reduce((v,t)=>v+Number(t.amount),0));}}
+ const max=Math.max(1,...inc,...exp)*1.15,w=600,h=190,left=25,right=12,top=10,bottom=25,x=i=>left+i*(w-left-right)/Math.max(1,labels.length-1),y=v=>top+(h-top-bottom)*(1-v/max),path=a=>a.map((v,i)=>(i?"L":"M")+x(i)+","+y(v)).join(" ");let grid=[0,.33,.66,1].map(v=>`<line class="chart-gridline" x1="${left}" y1="${y(max*v)}" x2="${w-right}" y2="${y(max*v)}"/>`).join("");let ticks=labels.map((l,i)=>`<text class="chart-label" x="${x(i)}" y="${h-3}" text-anchor="middle">${esc(l)}</text>`).join("");el.innerHTML=`<svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${grid}<path class="chart-line-income chart-draw" pathLength="1" d="${path(inc)}"/><path class="chart-line-expense chart-draw chart-draw-delay" pathLength="1" d="${path(exp)}"/>${ticks}</svg>`;}
+function renderCategoryBars(el,items){const map={};items.forEach(t=>map[t.category]=(map[t.category]||0)+Number(t.amount));const rows=Object.entries(map).sort((a,b)=>b[1]-a[1]);const total=rows.reduce((a,x)=>a+x[1],0);if(!rows.length){el.innerHTML='<div class="empty-state">Пока нет данных за этот период.</div>';return;}el.innerHTML=rows.slice(0,8).map(([name,val],i)=>`<div class="category-row"><div class="category-name"><i class="category-dot" style="background:${colors[i%colors.length]}"></i>${esc(name)} <span class="category-percent">${Math.round(val/total*100)}%</span></div><b class="category-amount">${money(val)}</b><div class="category-track"><div class="category-fill" style="width:${val/total*100}%;background:${colors[i%colors.length]}"></div></div></div>`).join("");}
+function txRow(t){const sign=t.type==="income"?"+":t.type==="expense"?"−":"⇄",kind=t.type==="income"?"Доход":t.type==="expense"?"Расход":"Перевод";const meta=[t.category,dateFmt(t.date),t.account||"Основной"].filter(Boolean).map(esc).join(" · ");return `<div class="transaction-row ${t.type}-row"><div class="tx-icon">${icons[t.category]||"◦"}</div><div class="tx-info"><b>${esc(t.description)}</b><small>${meta}</small><span class="tx-kind ${t.type}">${kind}</span></div><div class="tx-amount ${t.type}">${sign}${money(t.amount)}</div><div class="tx-actions"><button data-edit="${t.id}" title="Изменить">✎</button><button data-delete="${t.id}" title="Удалить">×</button></div></div>`;}
+function renderRecent(){const el=$("#recent-list"),list=transactions.slice(0,5);el.innerHTML=list.length?list.map(txRow).join(""):'<div class="empty-state">Пока нет операций. Добавь первую!</div>';wireRowActions(el);}
+function populateCategoryFilter(){const sel=$("#category-filter"),val=sel.value;sel.innerHTML='<option value="all">Все категории</option>'+Object.values(categories).flat().filter((v,i,a)=>a.indexOf(v)===i).map(c=>`<option>${esc(c)}</option>`).join("");sel.value=val||"all";}
+function renderTransactions(){const q=($("#search-input")?.value||"").toLowerCase(),type=$("#type-filter")?.value||"all",cat=$("#category-filter")?.value||"all";const list=transactions.filter(t=>(type==="all"||t.type===type)&&(cat==="all"||t.category===cat)&&(!q||t.description.toLowerCase().includes(q)||t.category.toLowerCase().includes(q)));$("#all-list").innerHTML=list.length?list.map(txRow).join(""):'<div class="empty-state">Ничего не найдено. Попробуй изменить фильтры.</div>';wireRowActions($("#all-list"));}
+function renderAnalytics(){const period=$("#analytics-period")?.value||"month",items=filtered(period),s=sums(items);$("#a-income").textContent=money(s.income);$("#a-expense").textContent=money(s.expense);$("#a-net").textContent=money(s.income-s.expense);renderCategoryBars($("#analytics-categories"),items.filter(t=>t.type==="expense"));renderCategoryBars($("#analytics-income"),items.filter(t=>t.type==="income"));}
+function wireRowActions(el){el.querySelectorAll("[data-delete]").forEach(b=>b.onclick=()=>removeTransaction(b.dataset.delete));el.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>editTransaction(b.dataset.edit));}
+async function removeTransaction(id){if(!confirm("Удалить эту операцию?"))return;try{await deleteDoc(doc(db,"users",currentUser.uid,"transactions",id));transactions=transactions.filter(t=>t.id!==id);renderAll();toast("Операция удалена");}catch(e){toast("Не удалось удалить операцию");console.error(e);}}
+function openResetConfirmation(){
+  if(!currentUser){toast("Сначала войди в аккаунт");return;}
+  $("#reset-confirm").classList.remove("hidden");
+}
+function closeResetConfirmation(){
+  $("#reset-confirm").classList.add("hidden");
+}
+async function resetAllStatistics(){
+  const button=$("#confirm-reset-stats");
+  const resetButton=$("#reset-stats");
+  if(!currentUser){toast("Сессия пользователя не найдена. Войди снова.");return;}
+  if(button){button.disabled=true;button.textContent="Удаляем…";}
+  if(resetButton){resetButton.disabled=true;resetButton.textContent="Удаляем…";}
+  try{
+    // Read directly from Firestore, not only from the in-memory rendered list.
+    const snapshot=await getDocs(userCol());
+    const docs=snapshot.docs;
+    if(!docs.length){
+      closeResetConfirmation();
+      toast("Статистика уже пустая");
+      return;
+    }
+    for(let i=0;i<docs.length;i+=450){
+      const batch=writeBatch(db);
+      docs.slice(i,i+450).forEach(item=>batch.delete(item.ref));
+      await batch.commit();
+    }
+    transactions=[];
+    renderAll();
+    closeResetConfirmation();
+    toast("Вся статистика сброшена");
+  }catch(error){
+    console.error("Не удалось сбросить статистику:",error);
+    toast("Не удалось удалить операции. Проверь подключение и права доступа.");
+    try{await loadTransactions();}catch(reloadError){console.error("Не удалось обновить список:",reloadError);}
+  }finally{
+    if(button){button.disabled=false;button.textContent="Да, удалить всё";}
+    if(resetButton){resetButton.disabled=false;resetButton.textContent="Сбросить всю статистику";}
+  }
+}
+function openModal(type="expense",tx=null){editingId=tx?.id||null;selectedType=tx?.type||type;$("#modal-title").textContent=tx?"Изменить операцию":"Добавить операцию";$("#amount").value=tx?.amount||"";$("#description").value=tx?.description||"";$("#date").value=tx?.date||today();$("#account").value=tx?.account||"Основной";$("#note").value=tx?.note||"";updateTypeUI();fillCategories(tx?.category);$("#transaction-modal").classList.remove("hidden");setTimeout(()=>$("#amount").focus(),80);}
+function closeModal(){$("#transaction-modal").classList.add("hidden");$("#transaction-form").reset();editingId=null;}
+function updateTypeUI(){document.querySelectorAll(".type-option").forEach(b=>b.classList.toggle("active",b.dataset.type===selectedType));$("#category-hint").textContent=selectedType==="transfer"?"Перевод не учитывается как доход или расход.":"Категория подбирается по названию; при необходимости её можно изменить.";}
+function fillCategories(selected){$("#category").innerHTML=categories[selectedType].map(c=>`<option>${esc(c)}</option>`).join("");$("#category").value=selected||guessCategory($("#description").value,selectedType);}
+function editTransaction(id){const tx=transactions.find(t=>t.id===id);if(tx)openModal(tx.type,tx);}
+async function saveTransaction(e){e.preventDefault();const amount=Number($("#amount").value),description=$("#description").value.trim();if(!/^[0-9]+$/.test($("#amount").value)||!Number.isFinite(amount)||amount<=0){toast("Укажи сумму цифрами, больше нуля");return;}const data={type:selectedType,amount,description,category:$("#category").value,date:$("#date").value,account:$("#account").value,note:$("#note").value.trim(),updatedAt:serverTimestamp()};const btn=$("#save-transaction");btn.disabled=true;btn.textContent="Сохраняем…";try{if(editingId)await updateDoc(doc(db,"users",currentUser.uid,"transactions",editingId),data);else await addDoc(userCol(),{...data,createdAt:serverTimestamp()});await loadTransactions();closeModal();toast(editingId?"Изменения сохранены":"Операция добавлена");}catch(err){console.error(err);toast("Ошибка сохранения. Проверь подключение.");}finally{btn.disabled=false;btn.textContent="Сохранить операцию";}}
+function exportCSV(){if(!transactions.length){toast("Пока нечего экспортировать");return;}const rows=[["Дата","Тип","Название","Категория","Сумма","Счёт","Заметка"],...transactions.map(t=>[t.date,t.type,t.description,t.category,t.amount,t.account||"",t.note||""])];const csv="\uFEFF"+rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";")).join("\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));const a=document.createElement("a");a.href=url;a.download="penny-transactions.csv";a.click();URL.revokeObjectURL(url);}
+function initUI(){const label=new Date().toLocaleDateString("ru-RU",{weekday:"long",day:"numeric",month:"long"});$("#today-label").textContent=label.toUpperCase();document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>setView(b.dataset.view));document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>setView(b.dataset.go));document.querySelectorAll(".period-btn").forEach(b=>b.onclick=()=>{selectedPeriod=b.dataset.period;document.querySelectorAll(".period-btn").forEach(x=>x.classList.toggle("active",x===b));renderOverview();});["add-top","add-transactions"].forEach(id=>$("#"+id).onclick=()=>openModal());document.querySelectorAll("[data-close=modal]").forEach(b=>b.onclick=closeModal);document.querySelectorAll(".type-option").forEach(b=>b.onclick=()=>{selectedType=b.dataset.type;updateTypeUI();fillCategories();});$("#description").addEventListener("input",()=>{const guess=guessCategory($("#description").value,selectedType);if(categories[selectedType].includes(guess))$("#category").value=guess;});$("#amount").addEventListener("input",e=>{const clean=e.target.value.replace(/\D/g,"");if(e.target.value!==clean)e.target.value=clean;});$("#transaction-form").onsubmit=saveTransaction;$("#search-input").oninput=renderTransactions;$("#type-filter").onchange=renderTransactions;$("#category-filter").onchange=renderTransactions;$("#analytics-period").onchange=renderAnalytics;$("#reset-stats").addEventListener("click",openResetConfirmation);$("#confirm-reset-stats").addEventListener("click",resetAllStatistics);document.querySelectorAll("[data-reset-cancel]").forEach(b=>b.addEventListener("click",closeResetConfirmation));$("#export-csv").onclick=exportCSV;$("#logout").onclick=async()=>{await signOut(auth);location.href="login.html";};}
+onAuthStateChanged(auth,async user=>{if(!user){location.replace("login.html");return;}currentUser=user;$("#user-name").textContent=user.displayName||"Мой аккаунт";$("#user-email").textContent=user.email||"";$("#user-avatar").src=user.photoURL||"";try{initUI();await loadTransactions();$("#app").classList.remove("hidden");requestAnimationFrame(()=>$("#app").classList.add("app-ready"));setTimeout(()=>$("#loading").classList.add("loading-leave"),500);setTimeout(()=>$("#loading").classList.add("hidden"),1050);}catch(e){console.error(e);toast("Не удалось загрузить данные. Обнови страницу.");$("#app").classList.remove("hidden");requestAnimationFrame(()=>$("#app").classList.add("app-ready"));setTimeout(()=>$("#loading").classList.add("loading-leave"),500);setTimeout(()=>$("#loading").classList.add("hidden"),1050);}});
